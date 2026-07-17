@@ -322,6 +322,35 @@ end
 
 -- Repeatedly auto-plays any waste-top/tableau-top card that has a legal
 -- foundation move, until none remain. Returns the number of cards moved.
+-- Sends the top card of the given zone (waste, or a tableau pile) directly
+-- to its matching foundation, if that move is legal. Used by the
+-- double-tap gesture as a shortcut for "select then tap foundation".
+-- Returns "moved" | "won" | "invalid" | "not_playing"
+function SolitaireBoard:sendTopCardToFoundation(zone, pile)
+    if self.status ~= "playing" then return "not_playing" end
+
+    local sel, card
+    if zone == "waste" then
+        card = self.waste[#self.waste]
+        if not card then return "invalid" end
+        sel = { zone = "waste" }
+    elseif zone == "tableau" then
+        local col = self.tableau[pile]
+        card = col and col[#col]
+        if not card or not card.up then return "invalid" end
+        sel = { zone = "tableau", pile = pile, idx = #col }
+    else
+        return "invalid"
+    end
+
+    self.selected = nil
+    local dest = { zone = "foundation", suit = card.suit }
+    if self:_attemptMove(sel, dest) then
+        return self:_afterMove()
+    end
+    return "invalid"
+end
+
 function SolitaireBoard:autoComplete()
     if self.status ~= "playing" then return 0 end
     local moved_count = 0

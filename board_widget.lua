@@ -10,12 +10,15 @@ local C_BG       = Blitbuffer.COLOR_WHITE
 local C_BORDER   = Blitbuffer.COLOR_BLACK
 local C_BACK     = Blitbuffer.COLOR_GRAY_5
 local C_EMPTY    = Blitbuffer.COLOR_GRAY_E
-local C_RED      = Blitbuffer.COLOR_GRAY_3   -- e-ink: no real red, use a darker gray to differentiate from black
+local C_RED      = Blitbuffer.COLOR_GRAY_3   -- e-ink: no real red; a darker gray backs up the hollow-glyph shape cue below
 local C_BLACK    = Blitbuffer.COLOR_BLACK
 local C_SELECTED = Blitbuffer.COLOR_GRAY_9
 
 local RANK_LABELS = { [1]="A", [11]="J", [12]="Q", [13]="K" }
-local SUIT_GLYPHS = { S = "♠", H = "♥", D = "♦", C = "♣" }
+-- Red suits use hollow glyphs (♡♢) vs black suits' filled ones (♠♣): a
+-- shape-based cue that works even where the gray-shade difference doesn't
+-- read well on e-ink.
+local SUIT_GLYPHS = { S = "♠", H = "♡", D = "♢", C = "♣" }
 local RED_SUITS   = { H = true, D = true }
 
 local function rankLabel(rank)
@@ -61,6 +64,12 @@ function SolitaireBoardWidget:init()
                 range = Geom:new{ x = 0, y = 0, w = 3000, h = 3000 },
             },
         },
+        DoubleTap = {
+            GestureRange:new{
+                ges   = "double_tap",
+                range = Geom:new{ x = 0, y = 0, w = 3000, h = 3000 },
+            },
+        },
     }
 end
 
@@ -103,6 +112,21 @@ function SolitaireBoardWidget:onTap(_, ges)
     return true
 end
 
+-- Double-tapping a waste or tableau card sends it straight to its
+-- foundation (top-right slots) if the move is legal, skipping the usual
+-- select-then-tap-destination flow.
+function SolitaireBoardWidget:onDoubleTap(_, ges)
+    if not (ges and ges.pos) then return false end
+    local rect = self.paint_rect
+    local lx = ges.pos.x - rect.x
+    local ly = ges.pos.y - rect.y
+    local zone, pile = self:_hitTest(lx, ly)
+    if (zone == "waste" or zone == "tableau") and self.onSendToFoundation then
+        self.onSendToFoundation(zone, pile)
+    end
+    return true
+end
+
 function SolitaireBoardWidget:refresh()
     local rect = self.paint_rect
     UIManager:setDirty(self, function()
@@ -127,13 +151,18 @@ local function drawFaceUpCard(bb, x, y, w, h, card, face_rank, face_suit, select
     bb:paintRect(x, y, w, h, C_BG)
     drawSlotFrame(bb, x, y, w, h, selected)
     local color = RED_SUITS[card.suit] and C_RED or C_BLACK
-
-    local rank_text = rankLabel(card.rank)
-    local m1 = RenderText:sizeUtf8Text(0, w, face_rank, rank_text, true, false)
-    RenderText:renderUtf8Text(bb, x + math.floor(w * 0.08), y + math.abs(m1.y_top) + math.floor(h * 0.05),
-        face_rank, rank_text, true, false, color)
-
     local suit_text = SUIT_GLYPHS[card.suit] or "?"
+
+    -- Corner label (rank + suit) sits in the strip that stays visible even
+    -- when this card is mostly covered by the one fanned below it in the
+    -- tableau -- the big centered suit glyph below would be hidden then.
+    local corner_text = rankLabel(card.rank) .. suit_text
+    local m1 = RenderText:sizeUtf8Text(0, w, face_rank, corner_text, true, false)
+    RenderText:renderUtf8Text(bb, x + math.floor(w * 0.08), y + math.abs(m1.y_top) + math.floor(h * 0.05),
+        face_rank, corner_text, true, false, color)
+
+    -- Large centered suit glyph, seen on fully visible cards (top of pile,
+    -- waste, foundation).
     local m2 = RenderText:sizeUtf8Text(0, w, face_suit, suit_text, true, false)
     local sx = x + math.floor((w - m2.x) / 2)
     local sy = y + math.floor(h / 2) - math.floor((m2.y_top + m2.y_bottom) / 2)

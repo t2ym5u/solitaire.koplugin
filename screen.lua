@@ -51,7 +51,10 @@ Fondations : construisez dans la même couleur, en partant de l'As.
 Touchez une carte pour la sélectionner, puis touchez une colonne ou une fondation de destination. Touchez la pioche pour tirer de nouvelles cartes (ou recycler la défausse une fois la pioche vide).
 ]]
 
-local SolitaireScreen = ScreenBase:extend{}
+-- Double-tap is off by default screen-wide (KOReader delays every single
+-- tap while it waits to see if a second one follows); opt in here since
+-- double-tap-to-foundation is a deliberate feature of this game.
+local SolitaireScreen = ScreenBase:extend{ disable_double_tap = false }
 
 local RESULT_MESSAGES = {
     invalid = _("Invalid move."),
@@ -87,13 +90,24 @@ function SolitaireScreen:buildLayout()
     end)
 
     local board_w = is_landscape and math.floor(sw * 0.62) or math.floor(sw * 0.92)
-    local board_h = math.floor(board_w * 0.72)
+    local board_h
+    if is_landscape then
+        -- Base height on available vertical space (screen minus title bar)
+        -- rather than board width, so the tableau has room to fan out fully
+        -- and the right-hand status column gets a tall layout to sit in.
+        local tb_h    = title_bar:getSize().h
+        local avail_h = sh - tb_h
+        board_h = math.floor(avail_h * 0.94)
+    else
+        board_h = math.floor(board_w * 0.72)
+    end
 
     self.board_widget = SolitaireBoardWidget:new{
         board        = self.board,
         width        = board_w,
         height       = board_h,
         onCellAction = function(zone, pile, idx) self:onCellAction(zone, pile, idx) end,
+        onSendToFoundation = function(zone, pile) self:onSendToFoundation(zone, pile) end,
     }
 
     local board_frame = FrameContainer:new{
@@ -131,6 +145,29 @@ function SolitaireScreen:onCellAction(zone, pile, idx)
     if board.status ~= "playing" then return end
 
     local result = board:tap(zone, pile, idx)
+
+    if result == "invalid" then
+        self.board_widget:refresh()
+        self:updateStatus(RESULT_MESSAGES.invalid)
+        return
+    end
+
+    self.board_widget:refresh()
+    self.plugin:saveState(self:serializeState())
+
+    if result == "won" then
+        self:updateStatus()
+        self:showMessage(T(_("You won in %1 moves!"), board.moves), 4)
+    else
+        self:updateStatus()
+    end
+end
+
+function SolitaireScreen:onSendToFoundation(zone, pile)
+    local board = self.board
+    if board.status ~= "playing" then return end
+
+    local result = board:sendTopCardToFoundation(zone, pile)
 
     if result == "invalid" then
         self.board_widget:refresh()
