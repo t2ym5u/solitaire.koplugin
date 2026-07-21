@@ -2,7 +2,7 @@ local _ = require("gettext")
 
 return {
     name        = "solitaire",
-    version     = "1.0.2",
+    version     = "1.0.3",
     fullname    = _("Solitaire"),
     description = _("Classic Klondike solitaire card game."),
 }
