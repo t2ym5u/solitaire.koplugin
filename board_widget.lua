@@ -41,13 +41,27 @@ local SolitaireBoardWidget = InputContainer:extend{
     height       = 400,
 }
 
+-- A tableau column can hold at most a full King-to-Ace run.
+local MAX_COLUMN_CARDS = 13
+
 function SolitaireBoardWidget:init()
-    local w, h = self.width, self.height
+    local w = self.width
     self.slot_w = math.floor(w / 7)
     self.slot_h = math.floor(self.slot_w * 1.35)
     self.tableau_gap = math.max(4, math.floor(self.slot_h * 0.08))
     -- Vertical distance between fanned tableau cards' top edges.
     self.fan_offset = math.max(14, math.floor(self.slot_h * 0.28))
+
+    -- All card/fan sizing above derives from width alone, but `height` is
+    -- what the caller reserved for us in the outer layout -- if it's
+    -- shorter than the tallest possible tableau column, cards overflow
+    -- past our own bottom edge into whatever sits below (e.g. the status
+    -- line). Grow to fit the worst case instead of trusting the caller's
+    -- guess.
+    local needed_h = self.slot_h + self.tableau_gap
+        + (MAX_COLUMN_CARDS - 1) * self.fan_offset + self.slot_h
+    local h = math.max(self.height or 0, needed_h)
+    self.height = h
 
     self.dimen = Geom:new{ w = w, h = h }
     self.paint_rect = Geom:new{ x = 0, y = 0, w = w, h = h }
@@ -56,6 +70,12 @@ function SolitaireBoardWidget:init()
     self.rank_face = Font:getFace("cfont", rank_size)
     local suit_size = math.max(10, math.floor(self.slot_w * 0.32))
     self.suit_face = Font:getFace("cfont", suit_size)
+    -- The stock/waste/foundation row shows every card's big centered suit
+    -- glyph at once (unlike the tableau, where it's normally hidden under
+    -- the next fanned card) -- a notably smaller size keeps that row from
+    -- dominating the board visually.
+    local top_suit_size = math.max(8, math.floor(suit_size / 2.5))
+    self.top_suit_face = Font:getFace("cfont", top_suit_size)
 
     self.ges_events = {
         Tap = {
@@ -204,7 +224,7 @@ function SolitaireBoardWidget:paintTo(bb, x, y)
     local wtop = board.waste[#board.waste]
     if wtop then
         local is_sel = sel and sel.zone == "waste"
-        drawFaceUpCard(bb, x + sw, y, sw, sh, wtop, self.rank_face, self.suit_face, is_sel)
+        drawFaceUpCard(bb, x + sw, y, sw, sh, wtop, self.rank_face, self.top_suit_face, is_sel)
     else
         drawEmptySlot(bb, x + sw, y, sw, sh, nil, self.suit_face, false)
     end
@@ -214,9 +234,9 @@ function SolitaireBoardWidget:paintTo(bb, x, y)
         local fx = x + sw * (i + 2)
         local n = board.foundations[suit]
         if n > 0 then
-            drawFaceUpCard(bb, fx, y, sw, sh, { rank = n, suit = suit }, self.rank_face, self.suit_face, false)
+            drawFaceUpCard(bb, fx, y, sw, sh, { rank = n, suit = suit }, self.rank_face, self.top_suit_face, false)
         else
-            drawEmptySlot(bb, fx, y, sw, sh, SUIT_GLYPHS[suit], self.suit_face, false)
+            drawEmptySlot(bb, fx, y, sw, sh, SUIT_GLYPHS[suit], self.top_suit_face, false)
         end
     end
 
