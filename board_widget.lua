@@ -66,16 +66,14 @@ function SolitaireBoardWidget:init()
     self.dimen = Geom:new{ w = w, h = h }
     self.paint_rect = Geom:new{ x = 0, y = 0, w = w, h = h }
 
-    local rank_size = math.max(10, math.floor(self.slot_w * 0.28))
+    -- Corner label (rank + suit) sits smaller than the centered suit glyph,
+    -- right-aligned so it doesn't crowd two-digit ranks (e.g. "10").
+    local rank_size = math.max(8, math.floor(self.slot_w * 0.18))
     self.rank_face = Font:getFace("cfont", rank_size)
+    -- Centered suit glyph: the largest size used on a card, kept consistent
+    -- across the stock/waste/foundation row and the tableau.
     local suit_size = math.max(10, math.floor(self.slot_w * 0.32))
     self.suit_face = Font:getFace("cfont", suit_size)
-    -- The stock/waste/foundation row shows every card's big centered suit
-    -- glyph at once (unlike the tableau, where it's normally hidden under
-    -- the next fanned card) -- a notably smaller size keeps that row from
-    -- dominating the board visually.
-    local top_suit_size = math.max(8, math.floor(suit_size / 2.5))
-    self.top_suit_face = Font:getFace("cfont", top_suit_size)
 
     self.ges_events = {
         Tap = {
@@ -173,13 +171,21 @@ local function drawFaceUpCard(bb, x, y, w, h, card, face_rank, face_suit, select
     local color = RED_SUITS[card.suit] and C_RED or C_BLACK
     local suit_text = SUIT_GLYPHS[card.suit] or "?"
 
-    -- Corner label (rank + suit) sits in the strip that stays visible even
-    -- when this card is mostly covered by the one fanned below it in the
-    -- tableau -- the big centered suit glyph below would be hidden then.
-    local corner_text = rankLabel(card.rank) .. suit_text
-    local m1 = RenderText:sizeUtf8Text(0, w, face_rank, corner_text, true, false)
-    RenderText:renderUtf8Text(bb, x + math.floor(w * 0.08), y + math.abs(m1.y_top) + math.floor(h * 0.05),
-        face_rank, corner_text, true, false, color)
+    -- Corner labels sit in the strip that stays visible even when this card
+    -- is mostly covered by the one fanned below it in the tableau -- the big
+    -- centered suit glyph below would be hidden then. Rank sits left, suit
+    -- sits right, so neither crowds the other for two-digit ranks ("10").
+    local rank_text = rankLabel(card.rank)
+    local pad = math.floor(w * 0.08)
+    local corner_y = y + math.floor(h * 0.05)
+
+    local m1r = RenderText:sizeUtf8Text(0, w, face_rank, rank_text, true, false)
+    RenderText:renderUtf8Text(bb, x + pad, corner_y + math.abs(m1r.y_top),
+        face_rank, rank_text, true, false, color)
+
+    local m1s = RenderText:sizeUtf8Text(0, w, face_rank, suit_text, true, false)
+    RenderText:renderUtf8Text(bb, x + w - m1s.x - pad, corner_y + math.abs(m1s.y_top),
+        face_rank, suit_text, true, false, color)
 
     -- Large centered suit glyph, seen on fully visible cards (top of pile,
     -- waste, foundation).
@@ -224,7 +230,7 @@ function SolitaireBoardWidget:paintTo(bb, x, y)
     local wtop = board.waste[#board.waste]
     if wtop then
         local is_sel = sel and sel.zone == "waste"
-        drawFaceUpCard(bb, x + sw, y, sw, sh, wtop, self.rank_face, self.top_suit_face, is_sel)
+        drawFaceUpCard(bb, x + sw, y, sw, sh, wtop, self.rank_face, self.suit_face, is_sel)
     else
         drawEmptySlot(bb, x + sw, y, sw, sh, nil, self.suit_face, false)
     end
@@ -234,9 +240,9 @@ function SolitaireBoardWidget:paintTo(bb, x, y)
         local fx = x + sw * (i + 2)
         local n = board.foundations[suit]
         if n > 0 then
-            drawFaceUpCard(bb, fx, y, sw, sh, { rank = n, suit = suit }, self.rank_face, self.top_suit_face, false)
+            drawFaceUpCard(bb, fx, y, sw, sh, { rank = n, suit = suit }, self.rank_face, self.suit_face, false)
         else
-            drawEmptySlot(bb, fx, y, sw, sh, SUIT_GLYPHS[suit], self.top_suit_face, false)
+            drawEmptySlot(bb, fx, y, sw, sh, SUIT_GLYPHS[suit], self.suit_face, false)
         end
     end
 
