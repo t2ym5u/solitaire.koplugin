@@ -116,6 +116,11 @@ function SolitaireScreen:buildLayout()
         self.board_widget,
     }
 
+    local board_frame_w = board_frame:getSize().w
+    self.status_text:setMaxWidth(is_landscape
+        and (sw - board_frame_w - Size.span.horizontal_default)
+        or  board_frame_w)
+
     if is_landscape then
         local right = VerticalGroup:new{
             align = "center",
