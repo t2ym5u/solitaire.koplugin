@@ -1,7 +1,7 @@
 local _ = require("gettext")
 
 return {
-    version     = "1.1.0",
+    version     = "1.2.0",
     fullname    = _("Solitaire"),
-    description = _("Classic Klondike solitaire card game."),
+    description = _("Klondike, FreeCell, Spider, Golf and Pyramid solitaire card games."),
 }
