@@ -31,7 +31,7 @@ The classic Klondike solitaire card game.
 | Auto-complete | Tap **Auto-complete** |
 | Undo last move | Tap **Undo** |
 | New game | Tap **New game** |
-| Change draw mode | Tap **Draw mode** |
+| Change draw mode | Tap **Draw** |
 
 ## Installation
 

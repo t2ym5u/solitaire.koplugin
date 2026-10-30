@@ -6,6 +6,29 @@ Reconstructed from this repository's git history: each release lists the
 feature and fix commits it carried. Version bumps, screenshot additions
 and CI syncs are left out.
 
+## [1.1.0] - 2026-10-30
+
+### Changed
+- Redesigned play screen: Undo and Auto-complete moved from the title-bar
+  menu to a full-width action bar under the board, since they are used during
+  play. The cards are as large as the room allows while still fitting a full
+  13-card column.
+- The title-bar menu shows "Draw: 1" / "Draw: 3" (was "Draw 1"), in the same
+  order as every other game: New game, Draw, Rules.
+- The status line reads "Draw: 1 · Moves: 42 · Foundations: 12/52" and wraps
+  in landscape instead of being cut off.
+- A selected card gets a thick black outline (a light grey one read as
+  thinner than the edge of an unselected card).
+- The rules now mention double-tap to send a card to its foundation, Undo and
+  Auto-complete.
+- Once the game is won, the action bar shows "New game" in place of Undo and
+  Auto-complete.
+
+### Fixed
+- Card labels were sized from the card width and then scaled again for the
+  screen's DPI; the rank now fits the strip left visible on a fanned card on
+  every screen.
+
 ## [1.0.13] - 2026-10-01
 
 ### Fixed

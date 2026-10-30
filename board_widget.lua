@@ -1,4 +1,5 @@
 local Blitbuffer     = require("ffi/blitbuffer")
+local Device         = require("device")
 local Font           = require("ui/font")
 local Geom           = require("ui/geometry")
 local GestureRange   = require("ui/gesturerange")
@@ -12,7 +13,9 @@ local C_BACK     = Blitbuffer.COLOR_GRAY_5
 local C_EMPTY    = Blitbuffer.COLOR_GRAY_E
 local C_RED      = Blitbuffer.COLOR_GRAY_3   -- e-ink: no real red; a darker gray backs up the hollow-glyph shape cue below
 local C_BLACK    = Blitbuffer.COLOR_BLACK
-local C_SELECTED = Blitbuffer.COLOR_GRAY_9
+-- A selected card gets a thick black outline: a light-grey one read as
+-- thinner than the plain 1px black edge of every other card.
+local C_SELECTED = Blitbuffer.COLOR_BLACK
 
 local RANK_LABELS = { [1]="A", [11]="J", [12]="Q", [13]="K" }
 -- Red suits use hollow glyphs (♡♢) vs black suits' filled ones (♠♣): a
@@ -37,55 +40,77 @@ end
 local SolitaireBoardWidget = InputContainer:extend{
     board        = nil,
     onCellAction = nil,
-    width        = 300,
-    height       = 400,
+    max_width    = 300,
+    max_height   = 400,
 }
 
 -- A tableau column can hold at most a full King-to-Ace run.
 local MAX_COLUMN_CARDS = 13
 
+-- Card geometry as multiples of the slot (card) width.
+local CARD_RATIO = 1.35   -- card height / width
+local GAP_RATIO  = 0.08   -- top row to tableau gap / card height
+local FAN_RATIO  = 0.28   -- fanned card offset / card height
+
+-- Largest face whose ink for `sample` fits max_w x max_h. Measured unbounded
+-- (with a width limit sizeUtf8Text truncates, so a width test against it can
+-- never fail); ink height is y_top + y_bottom. Measuring keeps the cards'
+-- labels the same size on every DPI, where a size scaled off the slot width
+-- was scaled a second time by Font:getFace().
+local function fitFace(sample, max_w, max_h, screen_w)
+    local lo, hi, best = 6, math.max(6, math.floor(max_h)), 6
+    while lo <= hi do
+        local mid = math.floor((lo + hi) / 2)
+        local m   = RenderText:sizeUtf8Text(0, screen_w, Font:getFace("cfont", mid), sample, true, false)
+        if m.x <= max_w and (m.y_top + m.y_bottom) <= max_h then
+            best, lo = mid, mid + 1
+        else
+            hi = mid - 1
+        end
+    end
+    return Font:getFace("cfont", best)
+end
+
 function SolitaireBoardWidget:init()
-    local w = self.width
-    self.slot_w = math.floor(w / 7)
-    self.slot_h = math.floor(self.slot_w * 1.35)
-    self.tableau_gap = math.max(4, math.floor(self.slot_h * 0.08))
+    -- The board is 7 cards wide and, at worst, the top row plus a 13-card
+    -- tableau column tall. Size the card to fit both budgets, so the tallest
+    -- column never runs past our bottom edge into the controls below.
+    local tall_units = CARD_RATIO * (2 + GAP_RATIO + (MAX_COLUMN_CARDS - 1) * FAN_RATIO)
+    self.slot_w = math.max(10, math.floor(math.min(self.max_width / 7, self.max_height / tall_units)))
+    self.slot_h = math.floor(self.slot_w * CARD_RATIO)
+    self.tableau_gap = math.max(4, math.floor(self.slot_h * GAP_RATIO))
     -- Vertical distance between fanned tableau cards' top edges.
-    self.fan_offset = math.max(14, math.floor(self.slot_h * 0.28))
+    self.fan_offset = math.max(14, math.floor(self.slot_h * FAN_RATIO))
 
-    -- All card/fan sizing above derives from width alone, but `height` is
-    -- what the caller reserved for us in the outer layout -- if it's
-    -- shorter than the tallest possible tableau column, cards overflow
-    -- past our own bottom edge into whatever sits below (e.g. the status
-    -- line). Grow to fit the worst case instead of trusting the caller's
-    -- guess.
-    local needed_h = self.slot_h + self.tableau_gap
+    self.width  = self.slot_w * 7
+    self.height = self.slot_h + self.tableau_gap
         + (MAX_COLUMN_CARDS - 1) * self.fan_offset + self.slot_h
-    local h = math.max(self.height or 0, needed_h)
-    self.height = h
 
-    self.dimen = Geom:new{ w = w, h = h }
-    self.paint_rect = Geom:new{ x = 0, y = 0, w = w, h = h }
+    self.dimen = Geom:new{ w = self.width, h = self.height }
+    self.paint_rect = Geom:new{ x = 0, y = 0, w = self.width, h = self.height }
 
-    -- Corner label (rank + suit) sits smaller than the centered suit glyph,
-    -- right-aligned so it doesn't crowd two-digit ranks (e.g. "10").
-    local rank_size = math.max(8, math.floor(self.slot_w * 0.18))
-    self.rank_face = Font:getFace("cfont", rank_size)
+    local screen_w = Device.screen:getWidth()
+    -- Corner label (rank + suit) sits in the strip left visible by the
+    -- fanned card below, so it has to fit the fan offset; right-aligned suit
+    -- so it doesn't crowd two-digit ranks (e.g. "10").
+    self.rank_face = fitFace("10", self.slot_w * 0.45, self.fan_offset * 0.7, screen_w)
     -- Centered suit glyph: the largest size used on a card, kept consistent
     -- across the stock/waste/foundation row and the tableau.
-    local suit_size = math.max(10, math.floor(self.slot_w * 0.32))
-    self.suit_face = Font:getFace("cfont", suit_size)
+    self.suit_face = fitFace("\xE2\x99\xA3", self.slot_w * 0.5, self.slot_h * 0.36, screen_w)
 
+    -- Ranges follow the painted board: an unbounded range swallowed taps
+    -- meant for the buttons under the board.
     self.ges_events = {
         Tap = {
             GestureRange:new{
                 ges   = "tap",
-                range = Geom:new{ x = 0, y = 0, w = 3000, h = 3000 },
+                range = function() return self.paint_rect end,
             },
         },
         DoubleTap = {
             GestureRange:new{
                 ges   = "double_tap",
-                range = Geom:new{ x = 0, y = 0, w = 3000, h = 3000 },
+                range = function() return self.paint_rect end,
             },
         },
     }
@@ -158,7 +183,7 @@ end
 
 local function drawSlotFrame(bb, x, y, w, h, selected)
     local border = selected and C_SELECTED or C_BORDER
-    local bw = selected and 3 or 1
+    local bw = selected and math.max(3, math.floor(w * 0.04)) or 1
     bb:paintRect(x, y, w, bw, border)
     bb:paintRect(x, y + h - bw, w, bw, border)
     bb:paintRect(x, y, bw, h, border)

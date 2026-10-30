@@ -7,7 +7,6 @@ local function lrequire(name)
     return package.loaded[key]
 end
 
-local ButtonTable     = require("ui/widget/buttontable")
 local Device          = require("device")
 local FrameContainer  = require("ui/widget/container/framecontainer")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
@@ -36,7 +35,9 @@ Tableau piles: build down in alternating colors (e.g. red 8 on black 9). A face-
 
 Foundations: build up in the same suit, starting from the Ace.
 
-Tap a card to select it, then tap a destination pile or foundation to move it there. Tap the stock pile to draw new cards (or recycle the waste once the stock is empty).
+Tap a card to select it, then tap a destination pile or foundation to move it there. Tap the stock pile to draw new cards (or recycle the waste once the stock is empty). Double-tap a card to send it straight to its foundation.
+
+Undo takes back the last move; Auto-complete plays every card that can go to a foundation.
 ]])
 
 local GAME_RULES_FR = [[
@@ -48,7 +49,9 @@ Colonnes : construisez en alternant les couleurs (ex. un 8 rouge sur un 9 noir).
 
 Fondations : construisez dans la même couleur, en partant de l'As.
 
-Touchez une carte pour la sélectionner, puis touchez une colonne ou une fondation de destination. Touchez la pioche pour tirer de nouvelles cartes (ou recycler la défausse une fois la pioche vide).
+Touchez une carte pour la sélectionner, puis touchez une colonne ou une fondation de destination. Touchez la pioche pour tirer de nouvelles cartes (ou recycler la défausse une fois la pioche vide). Touchez deux fois une carte pour l'envoyer directement sur sa fondation.
+
+Annuler reprend le dernier coup ; Terminer automatiquement joue toutes les cartes qui peuvent aller sur une fondation.
 ]]
 
 -- Double-tap is off by default screen-wide (KOReader delays every single
@@ -75,72 +78,58 @@ function SolitaireScreen:serializeState()
 end
 
 function SolitaireScreen:buildLayout()
-    local sw = DeviceScreen:getWidth()
-    local sh = DeviceScreen:getHeight()
     local is_landscape = self:isLandscape()
 
     local title_bar = self:buildTitleBar(_("Solitaire"), function()
         return {
             { text = _("New game"),          callback = function() self:onNewGame() end },
             { text = self:_drawCountLabel(), callback = function() self:openDrawCountMenu() end },
-            { text = _("Auto-complete"),     callback = function() self:onAutoComplete() end },
-            { text = _("Undo"),              callback = function() self:onUndo() end },
             self:makeRulesButtonConfig(GAME_RULES_EN, GAME_RULES_FR),
         }
     end)
 
-    local board_w = is_landscape and math.floor(sw * 0.62) or math.floor(sw * 0.92)
-    local board_h
-    if is_landscape then
-        -- Base height on available vertical space (screen minus title bar)
-        -- rather than board width, so the tableau has room to fan out fully
-        -- and the right-hand status column gets a tall layout to sit in.
-        local tb_h    = title_bar:getSize().h
-        local avail_h = sh - tb_h
-        board_h = math.floor(avail_h * 0.94)
-    else
-        board_h = math.floor(board_w * 0.72)
-    end
+    -- Undo and Auto-complete are used during play, so they sit under the
+    -- board rather than in the menu.
+    self.status_text:setMaxWidth(self:getControlsWidth())
+    local controls = VerticalGroup:new{
+        align = "center",
+        self.status_text,
+        VerticalSpan:new{ width = Size.span.vertical_large },
+        self:buildActionBar({
+            { text = _("Undo"),          callback = function() self:onUndo() end },
+            { text = _("Auto-complete"), callback = function() self:onAutoComplete() end },
+        }),
+    }
 
+    -- The board is taller than wide (room for a full 13-card column), so the
+    -- widget fits its cards inside both budgets.
+    local frame_pad   = Size.padding.large
+    local frame_extra = 2 * (frame_pad + Size.border.window)
+    local budget_w, budget_h = self:getBoardBudget(title_bar, controls)
     self.board_widget = SolitaireBoardWidget:new{
         board        = self.board,
-        width        = board_w,
-        height       = board_h,
+        max_width    = budget_w - frame_extra,
+        max_height   = budget_h - frame_extra,
         onCellAction = function(zone, pile, idx) self:onCellAction(zone, pile, idx) end,
         onSendToFoundation = function(zone, pile) self:onSendToFoundation(zone, pile) end,
     }
-
     local board_frame = FrameContainer:new{
-        padding = Size.padding.default,
-        margin  = Size.margin.default,
+        padding = frame_pad,
+        margin  = 0,
         self.board_widget,
     }
 
-    local board_frame_w = board_frame:getSize().w
-    self.status_text:setMaxWidth(is_landscape
-        and (sw - board_frame_w - Size.span.horizontal_default)
-        or  board_frame_w)
-
     if is_landscape then
-        local right = VerticalGroup:new{
-            align = "center",
-            self.status_text,
-        }
         local content = HorizontalGroup:new{
             align  = "center",
             board_frame,
-            HorizontalSpan:new{ width = Size.span.horizontal_default },
-            right,
+            HorizontalSpan:new{ width = self:getGutter() },
+            controls,
         }
         self:buildLandscapeLayout(title_bar, content)
     else
-        local content = VerticalGroup:new{
-            align = "center",
-            board_frame,
-            VerticalSpan:new{ width = Size.span.vertical_large },
-            self.status_text,
-        }
-        self:buildPortraitLayout(title_bar, content, nil)
+        self:buildPortraitLayout(title_bar, board_frame,
+            VerticalGroup:new{ align = "center", controls, VerticalSpan:new{ width = self:getGutter() } })
     end
     self:updateStatus()
 end
@@ -159,6 +148,7 @@ function SolitaireScreen:onCellAction(zone, pile, idx)
 
     self.board_widget:refresh()
     self.plugin:saveState(self:serializeState())
+    self:refreshActionBar()
 
     if result == "won" then
         self:updateStatus()
@@ -182,6 +172,7 @@ function SolitaireScreen:onSendToFoundation(zone, pile)
 
     self.board_widget:refresh()
     self.plugin:saveState(self:serializeState())
+    self:refreshActionBar()
 
     if result == "won" then
         self:updateStatus()
@@ -195,6 +186,7 @@ function SolitaireScreen:onAutoComplete()
     local moved = self.board:autoComplete()
     self.board_widget:refresh()
     self.plugin:saveState(self:serializeState())
+    self:refreshActionBar()
     if moved == 0 then
         self:updateStatus(_("No automatic moves available."))
         return
@@ -211,11 +203,16 @@ function SolitaireScreen:onUndo()
     local ok = self.board:undo()
     self.board_widget:refresh()
     self.plugin:saveState(self:serializeState())
+    self:refreshActionBar()
     if ok then
         self:updateStatus(_("Last move undone."))
     else
         self:updateStatus(_("Nothing to undo."))
     end
+end
+
+function SolitaireScreen:isRoundOver()
+    return self.board.status == "won"
 end
 
 function SolitaireScreen:onNewGame()
@@ -246,7 +243,7 @@ end
 
 function SolitaireScreen:_drawCountLabel()
     local dc = self.plugin:getSetting("draw_count", 1)
-    return T(_("Draw %1"), dc)
+    return T(_("Draw: %1"), dc)
 end
 
 function SolitaireScreen:updateStatus(msg)
@@ -256,10 +253,10 @@ function SolitaireScreen:updateStatus(msg)
     elseif self.board.status == "won" then
         status = T(_("Solved in %1 move(s)!"), self.board.moves)
     else
-        status = T(_("Moves: %1  Foundations: %2/52"),
-            self.board.moves,
-            self.board.foundations.S + self.board.foundations.H
-                + self.board.foundations.D + self.board.foundations.C)
+        local f = self.board.foundations
+        status = self:joinStatus(self:_drawCountLabel(),
+            T(_("Moves: %1"), self.board.moves),
+            T(_("Foundations: %1/52"), f.S + f.H + f.D + f.C))
     end
     ScreenBase.updateStatus(self, status)
 end
