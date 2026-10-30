@@ -6,6 +6,36 @@ Reconstructed from this repository's git history: each release lists the
 feature and fix commits it carried. Version bumps, screenshot additions
 and CI syncs are left out.
 
+## [1.2.0] - 2026-10-30
+
+### Added
+- Four more patience games, picked from the new **Game** menu entry; Klondike
+  stays the default and each game keeps its own game in progress:
+  - **FreeCell**: 4 free cells, supermoves limited to (free cells + 1) x
+    2^(empty columns), Microsoft-compatible deal numbers 1-32000 with
+    **Choose deal** (verified against deal #1).
+  - **Spider**: 1, 2 or 4 suits; a row is dealt only when no column is empty;
+    complete King-to-Ace runs of one suit go to the foundation by themselves.
+    Face-down cards are drawn as thin edges and long columns squeeze to fit.
+  - **Golf**: 7 columns of 5, play onto the waste one rank up or down;
+    optional King-Ace wrap. Lost when the stock is out and nothing fits.
+  - **Pyramid**: remove pairs adding up to 13 and lone Kings; 1, 2, 3 or
+    unlimited passes through the stock. Covered cards are greyed out.
+- **Statistics**: games played and won per game (Spider per suit count).
+- A lost Golf or Pyramid game offers Undo next to New game.
+
+### Changed
+- The title bar shows the game being played ("Klondike" rather than
+  "Solitaire").
+- The status line's "Draw:" shows the draw count of the game in progress,
+  which may differ from the setting for a resumed game.
+- Card drawing moved to a shared widget base; a Klondike column longer than
+  13 cards now squeezes instead of running past the board.
+
+### Compatibility
+- Klondike saves from earlier versions (no game tag) still load, under the
+  same settings key.
+
 ## [1.1.0] - 2026-10-30
 
 ### Changed
