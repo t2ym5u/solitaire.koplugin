@@ -47,7 +47,7 @@ Only one card moves at a time, but a run in sequence moves as a whole when there
 
 Tap a card or a run to select it, then tap a column, a free cell or a foundation. Double-tap a card to send it to its foundation.
 
-Deals are numbered from 1 to 32000 like Microsoft FreeCell's; "Choose deal" replays one. Almost every deal can be won (#11982 is the famous exception).
+Deals are numbered from 1 to 32000 like Microsoft FreeCell's; "Choose deal" replays one. Every deal can be won except #11982, the famous exception: a new game never deals it, but "Choose deal" still can.
 ]]),
         fr = [[
 FreeCell — Règles
@@ -62,7 +62,7 @@ Une seule carte bouge à la fois, mais une suite ordonnée se déplace d'un bloc
 
 Touchez une carte ou une suite pour la sélectionner, puis une colonne, une cellule libre ou une fondation. Touchez deux fois une carte pour l'envoyer sur sa fondation.
 
-Les donnes sont numérotées de 1 à 32000 comme dans le FreeCell de Microsoft ; « Choisir la donne » en rejoue une. Presque toutes les donnes sont gagnables (la n° 11982 est l'exception célèbre).
+Les donnes sont numérotées de 1 à 32000 comme dans le FreeCell de Microsoft ; « Choisir la donne » en rejoue une. Toutes les donnes sont gagnables sauf la n° 11982, l'exception célèbre : une nouvelle partie ne la distribue jamais, mais « Choisir la donne » le peut encore.
 ]],
     },
 
@@ -102,6 +102,8 @@ Tap a column to play its top card onto the waste, if it is one rank above or bel
 When no card fits, tap the stock to turn its next card onto the waste. The stock is not recycled: the game is lost once it is empty and no card fits.
 
 Your score is the number of cards left in the columns (lower is better).
+
+Every deal can be won, though not by every order of play.
 ]]),
         fr = [[
 Golf — Règles
@@ -113,6 +115,8 @@ Touchez une colonne pour jouer sa carte du dessus sur la défausse, si elle a un
 Quand aucune carte ne convient, touchez la pioche pour retourner sa carte suivante sur la défausse. La pioche n'est pas recyclée : la partie est perdue une fois la pioche vide si aucune carte ne convient.
 
 Votre score est le nombre de cartes restant dans les colonnes (le plus bas est le meilleur).
+
+Chaque donne peut être gagnée, mais pas dans n'importe quel ordre de jeu.
 ]],
     },
 
@@ -127,6 +131,8 @@ Remove two cards whose ranks add up to 13 (Jack = 11, Queen = 12): tap one, then
 Tap the stock to turn its next card onto the waste; the top waste card can be paired too. Once the stock is empty, tap it to turn the waste over again, as many times as the number of passes allows.
 
 The game is lost when no pair, King or stock card is left to play.
+
+Every deal can be won with the chosen number of passes, though not by every order of play.
 ]]),
         fr = [[
 Pyramide — Règles
@@ -138,6 +144,8 @@ Retirez deux cartes dont les rangs font 13 (Valet = 11, Dame = 12) : touchez l'u
 Touchez la pioche pour retourner sa carte suivante sur la défausse ; la carte du dessus de la défausse peut aussi former une paire. Une fois la pioche vide, touchez-la pour retourner la défausse, autant de fois que le nombre de passes le permet.
 
 La partie est perdue quand il ne reste ni paire, ni Roi, ni carte de pioche à jouer.
+
+Chaque donne peut être gagnée avec le nombre de passes choisi, mais pas dans n'importe quel ordre de jeu.
 ]],
     },
 }

@@ -56,12 +56,13 @@ Variants.DEFS = {
     },
     golf = {
         Board = GolfBoard, state_key = "state_golf",
-        create = function(get) return GolfBoard:new{ wrap = get("golf_wrap") } end,
+        -- empty: no deal yet (the restore below loads a save or deals one).
+        create = function(get, empty) return GolfBoard:new{ wrap = get("golf_wrap"), empty = empty } end,
         reset  = function(board, get) board:reset(get("golf_wrap")) end,
     },
     pyramid = {
         Board = PyramidBoard, state_key = "state_pyramid",
-        create = function(get) return PyramidBoard:new{ passes = get("pyramid_passes") } end,
+        create = function(get, empty) return PyramidBoard:new{ passes = get("pyramid_passes"), empty = empty } end,
         reset  = function(board, get) board:reset(get("pyramid_passes")) end,
     },
 }
@@ -79,7 +80,9 @@ end
 -- freshly dealt. Second result: true when the save was resumed.
 function Variants.restore(id, state, get)
     local def = Variants.DEFS[id]
-    local board = def.create(get)
+    -- Golf and Pyramid search for a winnable deal: don't deal one only to
+    -- throw it away when the save loads.
+    local board = def.create(get, true)
     local ok = type(state) == "table"
         and (state.variant == id or (state.variant == nil and id == "klondike"))
         and board:load(state)

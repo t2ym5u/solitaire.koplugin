@@ -75,11 +75,17 @@ function FreeCellBoard:new(opts)
     return obj
 end
 
--- deal: 1..32000, or nil for a random one.
+-- The one deal in 1..32000 that cannot be won. A random deal never picks
+-- it; choosing it by number still deals it.
+FreeCellBoard.UNWINNABLE_DEAL = 11982
+
+-- deal: 1..32000, or nil for a random (always winnable) one.
 function FreeCellBoard:reset(deal)
     deal = tonumber(deal)
     if not deal or deal < 1 or deal > MAX_DEAL then
-        deal = math.random(MAX_DEAL)
+        repeat
+            deal = math.random(MAX_DEAL)
+        until deal ~= FreeCellBoard.UNWINNABLE_DEAL
     end
     self.deal        = math.floor(deal)
     self.tableau     = FreeCellBoard.msDeal(self.deal)

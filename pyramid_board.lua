@@ -39,18 +39,182 @@ local function validPasses(n)
     return DEFAULT_PASSES
 end
 
+-- opts.empty: no deal yet (the caller loads a save, or calls reset).
 function PyramidBoard:new(opts)
     opts = opts or {}
     local obj = setmetatable({}, self)
+    if opts.empty then
+        obj.passes = validPasses(opts.passes)
+        return obj
+    end
     obj:reset(opts.passes)
     return obj
 end
 
-function PyramidBoard:reset(passes)
-    self.passes = validPasses(passes or self.passes)
+-- ---------------------------------------------------------------------------
+-- Winnable deals
+--
+-- Every deal can be won. A random deal is kept once a depth-first search,
+-- capped at SOLVE_NODES positions, finds a way to clear the pyramid; that
+-- is the proof. About 6 random deals in 10 can be won with 3 passes or
+-- unlimited passes, 4 in 10 with 2, so a few deals are usually tried. With
+-- a single pass only about 1 deal in 25 can be won, too few to find by
+-- trying: those deals are built around a winning game instead (see
+-- buildDeal), as is any deal after MAX_DEALS failed tries, which never
+-- happens in practice. All the work is capped by counts and only uses
+-- math.random, so a seed always gives the same deal.
+-- ---------------------------------------------------------------------------
+
+PyramidBoard.SOLVE_NODES = 300
+PyramidBoard.MAX_DEALS   = 120
+
+local SLOTS = ROWS * (ROWS + 1) / 2
+local SLOT_ROW, SLOT_IDX, KID1, KID2 = {}, {}, {}, {}
+do
+    local idx, k = {}, 0
+    for r = 1, ROWS do
+        idx[r] = {}
+        for i = 1, r do
+            k = k + 1
+            idx[r][i] = k
+            SLOT_ROW[k], SLOT_IDX[k] = r, i
+        end
+    end
+    for r = 1, ROWS - 1 do
+        for i = 1, r do
+            KID1[idx[r][i]] = idx[r + 1][i]
+            KID2[idx[r][i]] = idx[r + 1][i + 1]
+        end
+    end
+end
+
+-- Search for a win from a position: pyramid[r][i] cards (false = removed),
+-- stock (top last), waste (top last), the current pass and the pass limit.
+-- Returns true (a win was found), false (proved lost) or nil (cap reached).
+-- With a `trace` table, a win also fills it with the winning moves, in
+-- order: { "king", r, i }, { "king_waste" }, { "pair", r1, i1, r2, i2 },
+-- { "pair_waste", r, i } or { "stock" } (draw or turn the waste over).
+function PyramidBoard.solve(pyramid, stock, waste, pass0, passes, cap, trace)
+    local rank, gone, bitv = {}, {}, {}
+    local pmask, left, b = 0, 0, 1
+    for k = 1, SLOTS do
+        bitv[k] = b
+        b = b * 2
+        local c = pyramid[SLOT_ROW[k]][SLOT_IDX[k]]
+        if c then
+            rank[k], gone[k], left = c.rank, false, left + 1
+        else
+            rank[k], gone[k], pmask = 0, true, pmask + bitv[k]
+        end
+    end
+    if left == 0 then return true end
+    -- Waste bottom to top, then the stock in drawing order: one sequence.
+    local seq = {}
+    for i = 1, #waste do seq[#seq + 1] = waste[i].rank end
+    local pos0 = #seq
+    for i = #stock, 1, -1 do seq[#seq + 1] = stock[i].rank end
+    local ns = #seq
+    local sg, sbit, smask = {}, {}, 0
+    b = 1
+    for j = 1, ns do sg[j], sbit[j], b = false, b, b * 2 end
+    local seen, nodes = {}, 0
+    local function note(m)
+        if trace then table.insert(trace, 1, m) end
+        return true
+    end
+
+    local function wasteTop(pos)
+        for j = pos, 1, -1 do if not sg[j] then return j end end
+        return nil
+    end
+    local function takeP(k, v)
+        gone[k] = v
+        if v then pmask, left = pmask + bitv[k], left - 1
+        else pmask, left = pmask - bitv[k], left + 1 end
+    end
+    local function takeS(j, v)
+        sg[j] = v
+        smask = v and smask + sbit[j] or smask - sbit[j]
+    end
+
+    local dfs
+    dfs = function(pos, pass)
+        if left == 0 then return true end
+        nodes = nodes + 1
+        if nodes > cap then error("cap", 0) end
+        local t = seen[pmask]
+        if not t then t = {}; seen[pmask] = t end
+        local key = (smask * 32 + pos) * 4 + (passes == 0 and 0 or pass)
+        if t[key] then return false end
+        t[key] = true
+        local av = {}
+        for k = 1, SLOTS do
+            if not gone[k] then
+                local k1 = KID1[k]
+                if not k1 or (gone[k1] and gone[KID2[k]]) then av[#av + 1] = k end
+            end
+        end
+        local w = wasteTop(pos)
+        -- A King goes on its own and blocks nothing: removing it is never wrong.
+        for _, k in ipairs(av) do
+            if rank[k] == 13 then
+                takeP(k, true)
+                local r = dfs(pos, pass)
+                takeP(k, false)
+                return r and note{ "king", SLOT_ROW[k], SLOT_IDX[k] }
+            end
+        end
+        if w and seq[w] == 13 then
+            takeS(w, true)
+            local r = dfs(pos, pass)
+            takeS(w, false)
+            return r and note{ "king_waste" }
+        end
+        for x = 1, #av do
+            local a = av[x]
+            for y = x + 1, #av do
+                local c = av[y]
+                if rank[a] + rank[c] == 13 then
+                    takeP(a, true); takeP(c, true)
+                    local r = dfs(pos, pass)
+                    takeP(a, false); takeP(c, false)
+                    if r then
+                        return note{ "pair", SLOT_ROW[a], SLOT_IDX[a], SLOT_ROW[c], SLOT_IDX[c] }
+                    end
+                end
+            end
+        end
+        if w then
+            for _, a in ipairs(av) do
+                if rank[a] + seq[w] == 13 then
+                    takeP(a, true); takeS(w, true)
+                    local r = dfs(pos, pass)
+                    takeP(a, false); takeS(w, false)
+                    if r then return note{ "pair_waste", SLOT_ROW[a], SLOT_IDX[a] } end
+                end
+            end
+        end
+        for j = pos + 1, ns do
+            if not sg[j] then return dfs(j, pass) and note{ "stock" } end
+        end
+        if (passes == 0 or pass < passes) and wasteTop(ns) then
+            return dfs(0, pass + 1) and note{ "stock" }
+        end
+        return false
+    end
+
+    local ok, res = pcall(dfs, pos0, pass0)
+    if not ok then
+        if res == "cap" then return nil end
+        error(res, 0)
+    end
+    return res
+end
+
+local function dealOnce()
     local deck = Cards.deck()
     Cards.shuffle(deck)
-    self.pyramid = {}
+    local pyramid = {}
     for r = 1, ROWS do
         local row = {}
         for i = 1, r do
@@ -58,8 +222,139 @@ function PyramidBoard:reset(passes)
             card.up = true
             row[i] = card
         end
-        self.pyramid[r] = row
+        pyramid[r] = row
     end
+    return pyramid, deck
+end
+
+-- Builds a deal around a winning game: plays a random game on blank slots
+-- and gives each slot its rank as it is removed (a King alone, or two ranks
+-- adding up to 13), then the ranks left to the cards never removed, and
+-- suits at random. Returns nil if the game it played got stuck.
+local function buildOnce(passes)
+    local left_of = {}
+    for r = 1, 13 do left_of[r] = 4 end
+    local prank, srank, gone, sg = {}, {}, {}, {}
+    local ns = 52 - SLOTS
+    for k = 1, SLOTS do gone[k] = false end
+    for j = 1, ns do sg[j] = false end
+    local pos, pass, left = 0, 1, SLOTS
+    local function pairRank()
+        local opts = {}
+        for a = 1, 6 do
+            if left_of[a] > 0 then opts[#opts + 1] = a end -- left_of[a] == left_of[13 - a]
+        end
+        if #opts == 0 then return nil end
+        local a = opts[math.random(#opts)]
+        if math.random(2) == 1 then a = 13 - a end
+        return a
+    end
+    local function use(r) left_of[r] = left_of[r] - 1 end
+    for _ = 1, 400 do
+        if left == 0 then break end
+        local av = {}
+        for k = 1, SLOTS do
+            if not gone[k] then
+                local k1 = KID1[k]
+                if not k1 or (gone[k1] and gone[KID2[k]]) then av[#av + 1] = k end
+            end
+        end
+        local w
+        for j = pos, 1, -1 do if not sg[j] then w = j; break end end
+        local kinds = {}
+        local pr = pairRank()
+        if #av >= 2 and pr then kinds[#kinds + 1] = "pp" end
+        if w and pr then kinds[#kinds + 1] = "pw" end
+        if left_of[13] > 0 and (#av > 0 or w) then kinds[#kinds + 1] = "k" end
+        local nextj
+        for j = pos + 1, ns do if not sg[j] then nextj = j; break end end
+        local canRecycle = not nextj and (passes == 0 or pass < passes) and w
+        if nextj or canRecycle then kinds[#kinds + 1] = "draw" end
+        if #kinds == 0 then return nil end
+        local kind = kinds[math.random(#kinds)]
+        if kind == "pp" then
+            local x = math.random(#av)
+            local y = math.random(#av - 1)
+            if y >= x then y = y + 1 end
+            prank[av[x]], prank[av[y]] = pr, 13 - pr
+            gone[av[x]], gone[av[y]] = true, true
+            use(pr); use(13 - pr)
+            left = left - 2
+        elseif kind == "pw" then
+            local x = av[math.random(#av)]
+            prank[x], srank[w] = pr, 13 - pr
+            gone[x], sg[w] = true, true
+            use(pr); use(13 - pr)
+            left = left - 1
+        elseif kind == "k" then
+            use(13)
+            if w and (#av == 0 or math.random(#av + 1) == 1) then
+                srank[w], sg[w] = 13, true
+            else
+                local x = av[math.random(#av)]
+                prank[x], gone[x] = 13, true
+                left = left - 1
+            end
+        elseif nextj then
+            pos = nextj
+        else
+            pos, pass = 0, pass + 1
+        end
+    end
+    if left > 0 then return nil end
+    -- The ranks left go to the stock cards never removed.
+    local rest = {}
+    for r = 1, 13 do
+        for _ = 1, left_of[r] do rest[#rest + 1] = r end
+    end
+    Cards.shuffle(rest)
+    for j = 1, ns do
+        if not srank[j] then srank[j] = table.remove(rest) end
+    end
+    -- Suits at random.
+    local suits = {}
+    for r = 1, 13 do
+        suits[r] = { "S", "H", "D", "C" }
+        Cards.shuffle(suits[r])
+    end
+    local function card(r, up)
+        return { rank = r, suit = table.remove(suits[r]), up = up }
+    end
+    local pyramid = {}
+    for r = 1, ROWS do pyramid[r] = {} end
+    for k = 1, SLOTS do pyramid[SLOT_ROW[k]][SLOT_IDX[k]] = card(prank[k], true) end
+    local stock = {}
+    for j = ns, 1, -1 do stock[#stock + 1] = card(srank[j], false) end -- draw order: top last
+    return pyramid, stock
+end
+
+PyramidBoard.MAX_BUILDS = 200
+
+-- Returns pyramid, stock; nil if every try got stuck (never seen in practice).
+local function buildDeal(passes)
+    for _ = 1, PyramidBoard.MAX_BUILDS do
+        local pyramid, stock = buildOnce(passes)
+        if pyramid then return pyramid, stock end
+    end
+    return nil
+end
+PyramidBoard._buildDeal = buildDeal
+
+function PyramidBoard:reset(passes)
+    self.passes = validPasses(passes or self.passes)
+    local pyramid, deck
+    if self.passes ~= 1 then
+        for _ = 1, PyramidBoard.MAX_DEALS do
+            local p, d = dealOnce()
+            if PyramidBoard.solve(p, d, {}, 1, self.passes, PyramidBoard.SOLVE_NODES) then
+                pyramid, deck = p, d
+                break
+            end
+        end
+    end
+    if not pyramid then pyramid, deck = buildDeal(self.passes) end
+    if not pyramid then pyramid, deck = dealOnce() end
+    self.pyramid  = pyramid
     self.stock    = deck
     self.waste    = {}
     self.discard  = {}

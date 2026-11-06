@@ -33,19 +33,76 @@ GolfBoard.__index = GolfBoard
 GolfBoard.NUM_COLS   = NUM_COLS
 GolfBoard.COL_HEIGHT = COL_HEIGHT
 
+-- opts.empty: no deal yet (the caller loads a save, or calls reset).
 function GolfBoard:new(opts)
     opts = opts or {}
     local obj = setmetatable({}, self)
+    if opts.empty then
+        obj.wrap = opts.wrap and true or false
+        return obj
+    end
     obj:reset(opts.wrap)
     return obj
 end
 
-function GolfBoard:reset(wrap)
-    if wrap ~= nil then self.wrap = wrap and true or false end
-    if self.wrap == nil then self.wrap = false end
+-- Every deal can be won. A deal is kept once a random game on it clears the
+-- tableau: up to PLAYOUTS games per deal, each playing a random fitting
+-- column card whenever there is one, else the next stock card. That winning
+-- game is the proof. Only about 4 deals in 10 can be won without the K-A
+-- wrap (9 in 10 with it), so a few deals are usually tried; the work is
+-- capped by counts and only uses math.random, so a seed always gives the
+-- same deal. MAX_DEALS is never reached in practice (each deal passes with
+-- a chance of 1 in 7 or better): the last deal is then kept as it is.
+GolfBoard.PLAYOUTS  = 100
+GolfBoard.MAX_DEALS = 200
+
+local function randomWin(tableau, stock, top0, wrap, tries)
+    local base, h = {}, {}
+    for p = 1, NUM_COLS do
+        base[p] = {}
+        for i = 1, #tableau[p] do base[p][i] = tableau[p][i].rank end
+    end
+    local draws = {}
+    for i = #stock, 1, -1 do draws[#draws + 1] = stock[i].rank end
+    local ns, total = #draws, NUM_COLS * COL_HEIGHT
+    local cand = {}
+    for _ = 1, tries do
+        for p = 1, NUM_COLS do h[p] = #base[p] end
+        local top, sp, left = top0, 0, total
+        while true do
+            local n = 0
+            for p = 1, NUM_COLS do
+                local hp = h[p]
+                if hp > 0 then
+                    local d = base[p][hp] - top
+                    if d == 1 or d == -1 or (wrap and (d == 12 or d == -12)) then
+                        n = n + 1
+                        cand[n] = p
+                    end
+                end
+            end
+            if n > 0 then
+                local p = cand[math.random(n)]
+                top = base[p][h[p]]
+                h[p] = h[p] - 1
+                left = left - 1
+                if left == 0 then return true end
+            elseif sp < ns then
+                sp = sp + 1
+                top = draws[sp]
+            else
+                break
+            end
+        end
+    end
+    return false
+end
+GolfBoard._randomWin = randomWin
+
+local function dealOnce()
     local deck = Cards.deck()
     Cards.shuffle(deck)
-    self.tableau = {}
+    local tableau = {}
     for p = 1, NUM_COLS do
         local col = {}
         for i = 1, COL_HEIGHT do
@@ -53,10 +110,22 @@ function GolfBoard:reset(wrap)
             card.up = true
             col[i] = card
         end
-        self.tableau[p] = col
+        tableau[p] = col
     end
     local first = table.remove(deck)
     first.up = true
+    return tableau, deck, first
+end
+
+function GolfBoard:reset(wrap)
+    if wrap ~= nil then self.wrap = wrap and true or false end
+    if self.wrap == nil then self.wrap = false end
+    local tableau, deck, first
+    for _ = 1, GolfBoard.MAX_DEALS do
+        tableau, deck, first = dealOnce()
+        if randomWin(tableau, deck, first.rank, self.wrap, GolfBoard.PLAYOUTS) then break end
+    end
+    self.tableau  = tableau
     self.waste    = { first }
     self.stock    = deck
     self.selected = nil
