@@ -26,8 +26,8 @@ the default.
   hold one card each. Runs move as a whole when there is room to shuffle them
   through the free cells and empty columns: (free cells + 1) x 2^(empty
   columns). Deals are numbered 1-32000 and match Microsoft FreeCell's, so
-  **Choose deal** replays a known one. Almost every deal is winnable (#11982
-  is the famous exception).
+  **Choose deal** replays a known one. Every deal is winnable except #11982,
+  the famous exception: a new game never deals it, **Choose deal** still can.
 - **Spider** -- two decks in 1, 2 or 4 suits, 10 columns. Any card goes on
   one rank higher, but only same-suit runs move together; a complete King-to-Ace
   run of one suit leaves the table by itself. Deal a new row from the stock
@@ -35,10 +35,11 @@ the default.
   columns squeeze together so they always fit the screen.
 - **Golf** -- 7 columns of 5. Play column tops onto the waste one rank up or
   down, any suit; Kings and Aces don't connect unless **Wrap K–A** is on. One
-  tap on a column plays it.
+  tap on a column plays it. Every deal can be won.
 - **Pyramid** -- remove pairs adding up to 13 (J = 11, Q = 12), Kings alone,
   from a 7-row pyramid and the waste. Covered cards are greyed out. The stock
-  can be gone through 1, 2, 3 times or without limit (**Passes**).
+  can be gone through 1, 2, 3 times or without limit (**Passes**). Every deal
+  can be won with the chosen number of passes.
 
 ## Features
 

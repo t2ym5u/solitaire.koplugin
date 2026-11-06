@@ -6,6 +6,23 @@ Reconstructed from this repository's git history: each release lists the
 feature and fix commits it carried. Version bumps, screenshot additions
 and CI syncs are left out.
 
+## [1.3.0] - 2026-11-05
+
+### Changed
+- Golf and Pyramid only deal games that can be won, with every option.
+  Before, only about 43% of Golf deals (K–A wrap off, the default) and 57%
+  of Pyramid deals (3 passes, the default) could be won. A random deal is
+  kept once a search finds a winning game on it, so a few deals may be
+  tried behind the scenes; with a single Pyramid pass, where only about 1
+  deal in 25 can be won, the deal is built around a winning game instead.
+  The rules and options are unchanged, and the rules pages say so.
+- A new FreeCell game never deals #11982, the one Microsoft deal that cannot
+  be won; **Choose deal** still plays it on request.
+
+### Fixed
+- Resuming a Golf or Pyramid game no longer deals a game first only to
+  throw it away.
+
 ## [1.2.5] - 2026-11-04
 
 ### Fixed
